@@ -21,9 +21,6 @@ def load_ics(filename):
         cal = Calendar.from_ical(f.read())
     return cal
 
-import datetime
-import pytz
-
 def to_utc(dt):
     utc = pytz.UTC
     if isinstance(dt, datetime.date) and not isinstance(dt, datetime.datetime):
@@ -33,7 +30,6 @@ def to_utc(dt):
     else:
         dt = dt.astimezone(utc) 
     return dt
-
 
 def authenticate_google_calendar():
     if os.path.exists("token.json"):
@@ -93,11 +89,13 @@ def update_google_calendar():
                 summary = str(component.get('summary'))
                 start_dt = to_utc(component.get('dtstart').dt)
                 end_dt = to_utc(component.get('dtend').dt)
+                description = component.get('description', '')
 
                 event_key = (summary, start_dt.isoformat())
 
                 google_event = {
                     'summary': summary,
+                    'description': description,
                     'start': {'dateTime': start_dt.isoformat()},
                     'end': {'dateTime': end_dt.isoformat()},
                 }
