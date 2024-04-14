@@ -1,4 +1,3 @@
-from icalendar import Event
 from datetime import datetime
 
 def filter_events(events, exclude_names):

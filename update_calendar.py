@@ -10,11 +10,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 SCOPES = ['https://www.googleapis.com/auth/calendar']
-
-def load_config():
-    with open('config.json', 'r') as config_file:
-        config = json.load(config_file)
-    return config
+DIR = os.getcwd()
 
 def load_ics(filename):
     with open(filename, 'rb') as f:
@@ -32,8 +28,9 @@ def to_utc(dt):
     return dt
 
 def authenticate_google_calendar():
-    if os.path.exists("token.json"):
-        creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+    token = f'{DIR}/token.json'
+    if os.path.exists(token):
+        creds = Credentials.from_authorized_user_file(token, SCOPES)
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
@@ -42,7 +39,7 @@ def authenticate_google_calendar():
                 "credentials.json", SCOPES
             )
             creds = flow.run_local_server(port=0)
-            with open("token.json", "w") as token:
+            with open(token, "w") as token:
                 token.write(creds.to_json())
 
     return build("calendar", "v3", credentials=creds)
@@ -64,18 +61,13 @@ def fetch_google_calendar_events(service, calendar_id):
         ).execute()
         events_dict = {}
         for event in events_result.get('items', []):
-            event_start = event['start'].get('dateTime', event['start'].get('date'))
-            event_start_dt = datetime.datetime.fromisoformat(event_start.replace('Z', '+00:00'))
-            event_start_utc = to_utc(event_start_dt)
-            event_key = (event['summary'], event_start_utc.isoformat())
-            events_dict[event_key] = event
+            events_dict[event['id']] = event
         return events_dict
     except HttpError as error:
         print('An error occurred:', error)
         return {}
 
-def update_google_calendar():
-    config = load_config()
+def update_google_calendar(config):
 
     try:
         cal = load_ics('robin_work_filtered.ics')
@@ -90,18 +82,17 @@ def update_google_calendar():
                 start_dt = to_utc(component.get('dtstart').dt)
                 end_dt = to_utc(component.get('dtend').dt)
                 description = component.get('description', '')
-
-                event_key = (summary, start_dt.isoformat())
+                uid = component.get('UID').lower().replace("-","")
 
                 google_event = {
                     'summary': summary,
                     'description': description,
                     'start': {'dateTime': start_dt.isoformat()},
                     'end': {'dateTime': end_dt.isoformat()},
+                    'id' : uid
                 }
-                if event_key in google_events:
-                    event_id = google_events[event_key]['id']
-                    updated_event = service.events().update(calendarId=calendar_id, eventId=event_id, body=google_event).execute()
+                if uid in google_events:
+                    updated_event = service.events().update(calendarId=calendar_id, eventId=uid, body=google_event).execute()
                     print('Event updated: %s' % (updated_event.get('htmlLink')))
                 else:
                     inserted_event = service.events().insert(calendarId=calendar_id, body=google_event).execute()
