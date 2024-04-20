@@ -1,5 +1,3 @@
-from iCalendarCleaner import utils
-
 from icalendar import Calendar
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -39,64 +37,66 @@ def authenticate_google_calendar():
 
     return build("calendar", "v3", credentials=creds)
 
-def fetch_google_calendar_events(service, calendar_id, start_date, end_date):
-    try:
-        events_result = service.events().list(
-            calendarId=calendar_id,
-            timeMin=start_date,
-            timeMax=end_date,
-            singleEvents=True,
-            orderBy='startTime'
-        ).execute()
-        events_dict = {}
-        for event in events_result.get('items', []):
-            events_dict[event['id']] = event
-        return events_dict
-    except HttpError as error:
-        print('An error occurred:', error)
-        return {}
+def synchronize_events(service, calendar_id, cal, start_date, end_date):
+    for component in cal.walk():
+        if component.name != "VEVENT":
+            continue
+
+        event_info = parse_event(component)
+        event_id = event_info.get('id', None)
+        try:
+            if event_id and check_event_exists(service, calendar_id, event_id):
+                update_event(service, calendar_id, event_info)
+            else:
+                insert_event(service, calendar_id, event_info)
+        except HttpError as error:
+            handle_http_error(error, event_info['summary'])
 
 def update_google_calendar(config, start_date, end_date):
-
     try:
         cal = load_ics('robin_work_filtered.ics')
         service = authenticate_google_calendar()
         calendar_id = config['ROBIN_GOOGLE_CAL']
-
-        google_events = fetch_google_calendar_events(service, calendar_id, start_date, end_date)
         
-        for component in cal.walk():
-            if component.name == "VEVENT":
-                summary = str(component.get('summary'))
-                start_dt = utils.to_utc(component.get('dtstart').dt)
-                end_dt = utils.to_utc(component.get('dtend').dt)
-                description = component.get('description', '')
-                uid = component.get('UID').lower().replace("-","")
-                last_updated = datetime.datetime.now()
+        synchronize_events(service, calendar_id, cal, start_date, end_date)
 
-                google_event = {
-                    'summary': summary,
-                    'description': f'{description}\n\n{uid}\n\nLast updated: {last_updated}',
-                    'start': {'dateTime': start_dt.isoformat()},
-                    'end': {'dateTime': end_dt.isoformat()},
-                    'id' : uid
-                }
-                if uid in google_events:
-                    try: 
-                        updated_event = service.events().update(calendarId=calendar_id, eventId=uid, body=google_event).execute()
-                        print(f"Event {summary} updated: {updated_event.get('htmlLink')}")
-                    except HttpError as error:
-                        print(f"An error occurred updating an event: {error}")
-                else:
-                    try:
-                        inserted_event = service.events().insert(calendarId=calendar_id, body=google_event).execute()
-                        print(f"Event {summary} created: {inserted_event.get('htmlLink')}")
-                    except HttpError as error:
-                        if error.resp.status == 409:
-                            print("Event already exists.")
-                        else:
-                            print(f"An error occurred inserting an event: {error}")
         os.remove('robin_work_filtered.ics')
-        
     except Exception as error:
-        print(f"An error occurred: {error}")
+        print(f"An error occurred during the update process: {error}")
+
+def check_event_exists(service, calendar_id, event_id):
+    try:
+        event = service.events().get(calendarId=calendar_id, eventId=event_id).execute()
+        return event is not None
+    except HttpError as error:
+        if error.resp.status == 404:
+            return False
+        else:
+            raise
+
+def parse_event(component):
+    return {
+        'summary': str(component.get('summary')),
+        'description': str(component.get('description', '')) + f"\n\nLast updated: {datetime.datetime.now()}",
+        'start': {'dateTime': component.get('dtstart').dt.isoformat()},
+        'end': {'dateTime': component.get('dtend').dt.isoformat()},
+        'id': component.get('UID').lower().replace("-", "")
+    }
+
+def update_event(service, calendar_id, event_info):
+    updated_event = service.events().update(
+        calendarId=calendar_id, eventId=event_info['id'], body=event_info
+    ).execute()
+    print(f"Event {event_info['summary']} updated: {updated_event.get('htmlLink')}")
+
+def insert_event(service, calendar_id, event_info):
+    inserted_event = service.events().insert(
+        calendarId=calendar_id, body=event_info
+    ).execute()
+    print(f"Event {event_info['summary']} created: {inserted_event.get('htmlLink')}")
+
+def handle_http_error(error, summary):
+    if error.resp.status == 409:
+        print(f"Event {summary} already exists.")
+    else:
+        print(f"An error occurred for {summary}: {error}")
