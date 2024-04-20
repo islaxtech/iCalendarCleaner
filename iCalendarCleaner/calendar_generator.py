@@ -1,5 +1,12 @@
-from icalendar import Calendar, Event
+from icalendar import Calendar
+import requests
 import os
+
+def fetch_calendar(url):
+    response = requests.get(url)
+    response.raise_for_status()
+    calendar = Calendar.from_ical(response.content)
+    return calendar
 
 def generate_calendar(events, file_path='filtered_calendar.ics'):
     cal = Calendar()
@@ -17,12 +24,9 @@ def generate_calendar(events, file_path='filtered_calendar.ics'):
 
     print(f"Filtered calendar generated and saved to {file_path}")
 
-from icalendar import Calendar, Event
-import os
-
 def create_filtered_calendar(events, file_path):
+    ensure_directory_exists(file_path)
     cal = Calendar()
-
     for event in events:
         cal.add_component(event)
 
