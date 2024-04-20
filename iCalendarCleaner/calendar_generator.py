@@ -1,6 +1,9 @@
 from icalendar import Calendar
 import requests
 import os
+import logging
+
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def fetch_calendar(url):
     response = requests.get(url)
@@ -22,7 +25,7 @@ def generate_calendar(events, file_path='filtered_calendar.ics'):
     with open(file_path, 'wb') as f:
         f.write(cal.to_ical())
 
-    print(f"Filtered calendar generated and saved to {file_path}")
+    logging.info(f"Filtered calendar generated and saved to {file_path}")
 
 def create_filtered_calendar(events, file_path):
     ensure_directory_exists(file_path)
@@ -32,7 +35,7 @@ def create_filtered_calendar(events, file_path):
 
     with open(file_path, 'wb') as f:
         f.write(cal.to_ical())
-        print(f"Filtered calendar has been saved to {file_path}")
+        logging.info(f"Filtered calendar has been saved to {file_path}")
 
 def ensure_directory_exists(file_path):
     directory = os.path.dirname(file_path)

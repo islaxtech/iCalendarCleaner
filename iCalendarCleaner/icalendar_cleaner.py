@@ -5,6 +5,9 @@ from iCalendarCleaner import utils
 import datetime
 import json
 import os
+import logging
+
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -35,7 +38,7 @@ class iCalendarCleaner:
         return start_date, end_date
 
     def update_filtered_calendar(self):
-        print("Updating filtered calendar...")
+        logging.info("Updating filtered calendar...")
 
         events = self.get_events()
         start_date, end_date = self.get_date_range()
@@ -45,4 +48,4 @@ class iCalendarCleaner:
         calendar_generator.create_filtered_calendar(filtered_events, self.filtered_calendar)
         update_calendar.update_google_calendar(self.config, start_date, end_date)
         
-        print("Filtered calendar updated.")
+        logging.info("Filtered calendar updated.")

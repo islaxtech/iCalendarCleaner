@@ -7,6 +7,9 @@ from googleapiclient.errors import HttpError
 
 import os.path
 import datetime
+import logging
+
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 SCOPES = ['https://www.googleapis.com/auth/calendar']
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -25,7 +28,7 @@ def authenticate_google_calendar():
             try:
                 creds.refresh(Request())
             except Exception as e:
-                print("Refresh token is invalid or expired. Need to re-authenticate.")
+                logging.warning("Refresh token is invalid or expired. Need to re-authenticate.")
                 creds = None
         if not creds:
             flow = InstalledAppFlow.from_client_secrets_file(
@@ -62,7 +65,7 @@ def update_google_calendar(config, start_date, end_date):
 
         os.remove('robin_work_filtered.ics')
     except Exception as error:
-        print(f"An error occurred during the update process: {error}")
+        logging.error(f"An error occurred during the update process: {error}")
 
 def check_event_exists(service, calendar_id, event_id):
     try:
@@ -87,16 +90,16 @@ def update_event(service, calendar_id, event_info):
     updated_event = service.events().update(
         calendarId=calendar_id, eventId=event_info['id'], body=event_info
     ).execute()
-    print(f"Event {event_info['summary']} updated: {updated_event.get('htmlLink')}")
+    logging.info(f"Event {event_info['summary']} updated: {updated_event.get('htmlLink')}")
 
 def insert_event(service, calendar_id, event_info):
     inserted_event = service.events().insert(
         calendarId=calendar_id, body=event_info
     ).execute()
-    print(f"Event {event_info['summary']} created: {inserted_event.get('htmlLink')}")
+    logging.info(f"Event {event_info['summary']} created: {inserted_event.get('htmlLink')}")
 
 def handle_http_error(error, summary):
     if error.resp.status == 409:
-        print(f"Event {summary} already exists.")
+        logging.warning(f"Event {summary} already exists.")
     else:
-        print(f"An error occurred for {summary}: {error}")
+        logging.error(f"An error occurred for {summary}: {error}")
