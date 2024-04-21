@@ -40,50 +40,71 @@ def authenticate_google_calendar():
 
     return build("calendar", "v3", credentials=creds)
 
-def synchronize_events(service, calendar_id, cal, start_date, end_date):
+def synchronize_events(service, calendar_id, cal):
     for component in cal.walk():
         if component.name != "VEVENT":
             continue
 
         event_info = parse_event(component)
-        event_id = event_info.get('id', None)
+        event_id = event_info['id']
         try:
-            if event_id and check_event_exists(service, calendar_id, event_id):
+            if event_id and check_event_exists(service, calendar_id, event_info):
                 update_event(service, calendar_id, event_info)
             else:
                 insert_event(service, calendar_id, event_info)
         except HttpError as error:
-            handle_http_error(error, event_info['summary'])
+            handle_http_error(error, event_info)
 
-def update_google_calendar(config, start_date, end_date):
+def update_google_calendar(config):
     try:
         cal = load_ics('robin_work_filtered.ics')
         service = authenticate_google_calendar()
         calendar_id = config['ROBIN_GOOGLE_CAL']
         
-        synchronize_events(service, calendar_id, cal, start_date, end_date)
+        synchronize_events(service, calendar_id, cal)
 
         os.remove('robin_work_filtered.ics')
     except Exception as error:
         logging.error(f"An error occurred during the update process: {error}")
 
-def check_event_exists(service, calendar_id, event_id):
+def check_event_exists(service, calendar_id, event_info):
+    # check by id:
+    event_id = event_info.get('id', None)
     try:
         event = service.events().get(calendarId=calendar_id, eventId=event_id).execute()
-        return event is not None
+        if event is not None:
+            return True
     except HttpError as error:
-        if error.resp.status == 404:
-            return False
-        else:
-            raise
+        handle_http_error(error, event_info)
+
+    # check by time range/name:
+    event_start_time = event_info['start'].get('dateTime')
+    event_end_time = event_info['end'].get('dateTime')
+
+    events_result = service.events().list(
+        calendarId=calendar_id, timeMin=event_start_time, timeMax=event_end_time,
+        singleEvents=True, orderBy='startTime'
+    ).execute()
+
+    events = events_result.get('items', [])
+    event_summary = event_info.get('summary')
+
+    for event in events:
+        if event['summary'] == event_summary:
+            event_info['id'] = event['id']
+            logging.warning(f"Found event by date range/name. Id:{event['id']}")
+            return True
+        
+    return False
 
 def parse_event(component):
+    uid = component.get('UID').lower().replace("-", "")
     return {
         'summary': str(component.get('summary')),
-        'description': str(component.get('description', '')) + f"\n\nLast updated: {datetime.datetime.now()}",
+        'description': str(component.get('description', '')) + f"\n\nLast updated: {datetime.datetime.now()}\n\n{uid}",
         'start': {'dateTime': component.get('dtstart').dt.isoformat()},
         'end': {'dateTime': component.get('dtend').dt.isoformat()},
-        'id': component.get('UID').lower().replace("-", "")
+        'id': uid
     }
 
 def update_event(service, calendar_id, event_info):
@@ -98,8 +119,10 @@ def insert_event(service, calendar_id, event_info):
     ).execute()
     logging.info(f"Event {event_info['summary']} created: {inserted_event.get('htmlLink')}")
 
-def handle_http_error(error, summary):
+def handle_http_error(error, event_info):
     if error.resp.status == 409:
-        logging.warning(f"Event {summary} already exists.")
+        logging.warning(f"Event {event_info['summary']} already exists.")
+    if error.resp.status == 404:
+        logging.warning(f"Could not find event by id {event_info['id']}")
     else:
-        logging.error(f"An error occurred for {summary}: {error}")
+        logging.error(f"An error occurred for {event_info['summary']}: {error}")

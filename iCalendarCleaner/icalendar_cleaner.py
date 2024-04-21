@@ -46,6 +46,6 @@ class iCalendarCleaner:
         filtered_events = event_filter.filter_events(self.config, events, start_date, end_date)
 
         calendar_generator.create_filtered_calendar(filtered_events, self.filtered_calendar)
-        update_calendar.update_google_calendar(self.config, start_date, end_date)
+        update_calendar.update_google_calendar(self.config)
         
         logging.info("Filtered calendar updated.")
